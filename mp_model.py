@@ -53,6 +53,7 @@ def main():
     # Main loop
     try:
         frame_timestamp = 0
+        progress_bar = 0
         while(True):
             ret, frame = cap.read()
 
@@ -70,6 +71,8 @@ def main():
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
             frame_timestamp += 33
+
+            # Detect hands
             hand_results = hand_landmarker.detect_for_video(mp_image, frame_timestamp)
             if hand_results.hand_landmarks:
                 for hand_landmarks in hand_results.hand_landmarks:
@@ -100,15 +103,48 @@ def main():
                     w = int(bbox.width)
                     h = int(bbox.height)
 
-                    center_x = x + w // 2
-                    center_y = y + h // 2
+                    #center_x = x + w // 2
+                    #center_y = y + h // 2
 
                     # Draw rectangle around face
                     cv.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
                     # Draw center point
-                    cv.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
-            
+                    #cv.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+
+            # Overlapping logic
+            in_contact = False
+
+            if face_results.detections and hand_results.hand_landmarks:
+                face = face_results.detections[0]
+                bbox = face.bounding_box
+                x = int(bbox.origin_x)
+                y = int(bbox.origin_y)
+                w = int(bbox.width)
+                h = int(bbox.height)
+                for hand_landmarks in hand_results.hand_landmarks:
+                    x_coords = [lm.x * width for lm in hand_landmarks]
+                    y_coords = [lm.y * height for lm in hand_landmarks]
+                    x_min, x_max = int(min(x_coords)), int(max(x_coords))
+                    y_min, y_max = int(min(y_coords)), int(max(y_coords))
+                    # Check the 4 sides for bounding box intersection
+                    if (((x_min >= x and x_min <= x+w)  or (x_max >= x and x_max <= x+w)) and
+                        ((y_min >= y and y_min <= y+h) or (y_max >= y and y_max <= y+h))):
+                        if progress_bar < 50:
+                            progress_bar += 1
+                            in_contact = True
+                            break
+
+            # visualizer and time decay
+            if in_contact:
+                cv.circle(frame, (width//2, height//2), 50, (0, 0, 255), 0)
+                cv.circle(frame, (width//2, height//2), progress_bar, (0, 0, 255), -1)
+                if progress_bar == 50:
+                    print("50")
+            else:
+                if progress_bar > 0:
+                    progress_bar -= 1
+
             cv.imshow("Hand and Face Detection", frame)
 
             if cv.waitKey(1) == ord('q'):
